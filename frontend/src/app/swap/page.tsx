@@ -528,7 +528,7 @@ export default function SwapInterface() {
                         <div className="text-center space-y-2">
                           <p className="text-gray-400 text-sm">Scan with any UPI App</p>
                           <div className="flex items-center gap-2 justify-center bg-[#141414] px-4 py-2 rounded-lg border border-[#333]">
-                            <span className="text-white font-mono">8302906048@slc</span>
+                            <span className="text-white font-mono">7004974402@slc</span>
                             <button className="text-[#CCFF00] text-xs hover:underline">COPY</button>
                           </div>
                         </div>
@@ -539,7 +539,7 @@ export default function SwapInterface() {
                         <div className="bg-[#141414] border border-[#333] rounded-xl p-6 space-y-4">
                           <div className="flex justify-between items-center">
                             <span className="text-gray-400">Banking Name</span>
-                            <span className="text-white font-bold">NAVEEN KUMAR</span>
+                            <span className="text-white font-bold">ADITYA RAJ</span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-400">Amount to Pay</span>
