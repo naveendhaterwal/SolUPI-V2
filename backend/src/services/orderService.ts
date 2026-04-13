@@ -1,342 +1,141 @@
+import { OrderRepository } from '../repositories/OrderRepository';
+import { SolanaFacade } from '../facades/SolanaFacade';
+import { EmailTransactionRepository } from '../repositories/EmailTransactionRepository';
+import { Prisma } from '@prisma/client';
 
-import { prisma } from "./prisma";
-import { calculateUSDCAmount, transferUSDCToUser, initializePlatformWallet, isValidSolanaAddress } from './solanaService';
+export class OrderService {
+    constructor(
+        private orderRepo: OrderRepository,
+        private solanaFacade: SolanaFacade,
+        private emailRepo: EmailTransactionRepository
+    ) {}
 
-
-async function createOrderWithUser(userId, amount, walletAddress) {
-    try {
-        const parsedAmount = parseFloat(amount);
-        if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-            return { success: false, error: 'Invalid amount' };
-        }
-        if (!walletAddress || !isValidSolanaAddress(walletAddress)) {
-            return { success: false, error: 'Invalid Solana wallet address' };
-        }
-        const user = await prisma.user.upsert({
-            where: {
-                id: userId
-            },
-
-            update: {
-                walletAddr: walletAddress
-
-            },
-            create: {
-                id: userId,
-                email: `${userId}@example.com`,
-                name: "SolUPI User",
-                walletAddr: walletAddress,
-                password: "placeholder_hash" // Required by schema
-
+    async createOrder(userId: string, amount: number, walletAddress: string) {
+        try {
+            if (!this.solanaFacade.isValidAddress(walletAddress)) {
+                return { success: false, error: 'Invalid Solana wallet address' };
             }
-
-
-        })
-
-        console.log("User is there :", user);
-
-        const newOrder = await prisma.order.create({
-            data: {
-                userId: userId,
-                amount: parseFloat(amount),
-                walletAddr: walletAddress,
-                status: "PENDING"
-            }
-        })
-
-        console.log("Order created :", newOrder);
-        return {
-            success: true,
-            data: {
-                user: user,
-                order: newOrder
-            }
+            const { user, order } = await this.orderRepo.createOrderAndUser(userId, amount, walletAddress);
+            return { success: true, data: { user, order } };
+        } catch (err: any) {
+            return { success: false, error: err.message };
         }
-
-
-
     }
 
-    catch (err) {
-        console.error("Error creating order:", err);
-        return {
-            success: false,
-            error: err.message
-        }
-    }
-}
+    async getUserOrders(userId: string, page = 1, limit = 10, status: any = null, search: any = null, startDate: any = null, endDate: any = null, sortBy = 'createdAt', sortOrder = 'desc') {
+        try {
+            const skip = (page - 1) * limit;
+            const whereClause: Prisma.OrderWhereInput = { userId };
 
-
-async function getUserOrders(
-    userId,
-    page = 1,
-    limit = 10,
-    status = null,
-    search = null,
-    startDate = null,
-    endDate = null,
-    sortBy = 'createdAt',
-    sortOrder = 'desc'
-) {
-    try {
-        const skip = (page - 1) * limit;
-        const whereClause: any = { userId: userId };
-
-        // Status filter
-        if (status && status !== 'ALL') {
-            whereClause.status = status;
-        }
-
-        // Search filter (order ID, UTR, wallet address)
-        if (search && search.trim()) {
-            whereClause.OR = [
-                { id: { contains: search, mode: 'insensitive' } },
-                { utrNumber: { contains: search, mode: 'insensitive' } },
-                { walletAddr: { contains: search, mode: 'insensitive' } }
-            ];
-        }
-
-        // Date range filter
-        if (startDate || endDate) {
-            whereClause.createdAt = {};
-            if (startDate) {
-                whereClause.createdAt.gte = new Date(startDate);
+            if (status && status !== 'ALL') whereClause.status = status;
+            if (search && search.trim()) {
+                whereClause.OR = [
+                    { id: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
+                    { utrNumber: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
+                    { walletAddr: { contains: search, mode: 'insensitive' as Prisma.QueryMode } }
+                ];
             }
-            if (endDate) {
-                // Include the entire end date by setting time to end of day
-                const endDateTime = new Date(endDate);
-                endDateTime.setHours(23, 59, 59, 999);
-                whereClause.createdAt.lte = endDateTime;
-            }
-        }
-
-        // Validate and set sorting
-        const validSortFields = ['createdAt', 'amount', 'status', 'updatedAt'];
-        const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
-        const sortDirection = sortOrder === 'asc' ? 'asc' : 'desc';
-
-        const [orders, totalCount] = await Promise.all([
-            prisma.order.findMany({
-                where: whereClause,
-                orderBy: { [sortField]: sortDirection },
-                skip: skip,
-                take: limit,
-                include: { user: true }
-            }),
-            prisma.order.count({ where: whereClause })
-        ]);
-
-        return {
-            success: true,
-            data: {
-                orders,
-                pagination: {
-                    total: totalCount,
-                    page: page,
-                    limit: limit,
-                    totalPages: Math.ceil(totalCount / limit)
+            if (startDate || endDate) {
+                whereClause.createdAt = {};
+                if (startDate) whereClause.createdAt.gte = new Date(startDate);
+                if (endDate) {
+                    const endDateTime = new Date(endDate);
+                    endDateTime.setHours(23, 59, 59, 999);
+                    whereClause.createdAt.lte = endDateTime;
                 }
             }
-        }
-    } catch (err: any) {
-        console.error("Error fetching user orders:", err);
-        return { success: false, error: err.message };
-    }
-}
 
-async function deleteOrder(orderId, userId) {
-    try {
-        const order = await prisma.order.findFirst({
-            where: { id: orderId, userId: userId }
-        });
+            const validSortFields = ['createdAt', 'amount', 'status', 'updatedAt'];
+            const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+            const orderBy: Prisma.OrderOrderByWithRelationInput = { [sortField]: sortOrder === 'asc' ? 'asc' : 'desc' };
 
-        if (!order) {
-            return { success: false, error: "Order not found" };
-        }
-
-        if (order.status === 'COMPLETED' || order.status === 'PROCESSING') {
-            return { success: false, error: "Cannot delete a completed or processing order" };
-        }
-
-        await prisma.order.delete({
-            where: { id: orderId }
-        });
-
-        return { success: true, message: "Order deleted successfully" };
-    } catch (err: any) {
-        console.error("Error deleting order:", err);
-        return { success: false, error: err.message };
-    }
-}
-
-async function updateOrderUTR(orderId, utrNumber, userId) {
-    try {
-        const existingOrder = await prisma.order.findFirst({
-            where: {
-                id: orderId,
-                userId: userId
-            }
-        })
-
-        if (!existingOrder) {
+            const [orders, totalCount] = await this.orderRepo.findUserOrders(whereClause, orderBy, skip, limit);
+            
             return {
-                success: false,
-                error: "Order not found "
-            }
-        }
-
-        if (existingOrder.status !== "PENDING") {
-            return {
-                success: false,
-                error: "Order is not pending"
-            }
-        }
-
-        const updateOrder = await prisma.order.update({
-            where: {
-                id: orderId
-            },
-            data: {
-
-                utrNumber: utrNumber,
-                updatedAt: new Date(),
-
-            },
-            include: {
-                user: true
-            }
-        })
-
-        console.log("Order updated :", updateOrder.id);
-        verifyUTRAndCompleteOrder(utrNumber).catch(err => {
-            console.error('Auto-payout failed for UTR', utrNumber, err);
-        });
-        return {
-            success: true,
-            data: updateOrder
-        }
-
-    }
-
-    catch (err) {
-        console.error("Error updating order status:", err);
-        return {
-            success: false,
-            error: err.message
-        }
-    }
-}
-
-async function verifyUTRAndCompleteOrder(utrNumber) {
-    try {
-        console.log(`[Order Service] Verifying UTR: ${utrNumber}`);
-
-        // 1. Find the order
-        const order = await prisma.order.findFirst({
-            where: { utrNumber: utrNumber }
-        });
-        if (!order) {
-            return { success: false, error: 'Order with given UTR not found' };
-        }
-        if (order.status !== 'PENDING' && order.status !== 'AWAITING_PAYMENT') {
-            return { success: false, error: `Order not in payable state (${order.status})` };
-        }
-
-        // 2. Check EmailTransaction table
-        const emailTx = await prisma.emailTransaction.findUnique({
-            where: { rrn: utrNumber }
-        });
-
-        if (!emailTx) {
-            console.log(`[Order Service] UTR ${utrNumber} not found in EmailTransaction table yet.`);
-            return { success: false, error: 'Payment not received yet' };
-        }
-
-        if (emailTx.isUsed) {
-            console.log(`[Order Service] UTR ${utrNumber} already used.`);
-            return { success: false, error: 'UTR already used' };
-        }
-
-        // 3. Verify Amount - Critical security check!
-        // Allow small tolerance (1 INR) for rounding differences
-        const tolerance = 1;
-        if (emailTx.amount < (order.amount - tolerance)) {
-            console.log(`[Order Service] Amount mismatch: Email ${emailTx.amount} INR < Order ${order.amount} INR`);
-            return {
-                success: false,
-                error: `Payment amount (₹${emailTx.amount}) is less than order amount (₹${order.amount})`
+                success: true,
+                data: {
+                    orders,
+                    pagination: { total: totalCount, page, limit, totalPages: Math.ceil(totalCount / limit) }
+                }
             };
+        } catch (err: any) {
+            return { success: false, error: err.message };
         }
+    }
 
-        // 4. Mark EmailTransaction as used
-        await prisma.emailTransaction.update({
-            where: { id: emailTx.id },
-            data: { isUsed: true }
-        });
-
-        // 5. Proceed with Order Completion
-        if (!order.walletAddr || !isValidSolanaAddress(order.walletAddr)) {
-            return { success: false, error: 'Order missing or invalid wallet address' };
-        }
-
-        if (order.txSignature) {
-            return { success: false, error: 'Order already processed' };
-        }
-
-        const claim = await prisma.order.updateMany({
-            where: {
-                id: order.id,
-                status: { in: ['PENDING', 'AWAITING_PAYMENT'] }
-            },
-            data: { status: 'PROCESSING' }
-        });
-
-        if (claim.count === 0) {
-            return { success: false, error: 'Order already processing or completed' };
-        }
-
-        await initializePlatformWallet();
-
-        const calc = await calculateUSDCAmount(Number(order.amount));
-        const usdcAmount = calc?.usdcAmount ?? null;
-        if (usdcAmount === null || usdcAmount === undefined) {
-            await prisma.order.update({ where: { id: order.id }, data: { status: 'PENDING' } });
-            return { success: false, error: 'Failed to calculate USDC amount' };
-        }
-
-        const transferResult = await transferUSDCToUser(order.walletAddr, usdcAmount);
-        if (!transferResult || transferResult.success === false) {
-            await prisma.order.update({ where: { id: order.id }, data: { status: 'PENDING' } });
-            // Revert EmailTransaction usage if transfer fails?
-            // Ideally yes, but for now let's keep it simple. Manual intervention might be needed.
-            return { success: false, error: transferResult?.error || 'Transfer failed' };
-        }
-
-        const updated = await prisma.order.update({
-            where: { id: order.id },
-            data: {
-                status: 'COMPLETED',
-                txSignature: transferResult.signature,
-                recipientTokenAccount: transferResult.recipientTokenAccount ?? null,
-                completedAt: new Date()
-            }
-        });
-
-        return { success: true, data: updated };
-
-    } catch (err) {
+    async deleteOrder(orderId: string, userId: string) {
         try {
-            await prisma.order.updateMany({
-                where: { utrNumber: utrNumber, status: 'PROCESSING' },
-                data: { status: 'PENDING' }
-            });
-        } catch (e) {
-            console.error('Error in verifyUTRAndCompleteOrder:', err);
-            return { success: false, error: err.message || String(err) };
+            const order = await this.orderRepo.findByIdAndUser(orderId, userId);
+            if (!order) return { success: false, error: "Order not found" };
+            if (order.status === 'COMPLETED' || order.status === 'PROCESSING') {
+                return { success: false, error: "Cannot delete a completed or processing order" };
+            }
+            await this.orderRepo.delete(orderId);
+            return { success: true, message: "Order deleted successfully" };
+        } catch (err: any) {
+            return { success: false, error: err.message };
         }
-        return { success: false, error: err.message || String(err) };
+    }
+
+    async updateOrderUTR(orderId: string, utrNumber: string, userId: string) {
+        try {
+            const order = await this.orderRepo.findByIdAndUser(orderId, userId);
+            if (!order) return { success: false, error: "Order not found" };
+            if (order.status !== "PENDING") return { success: false, error: "Order is not pending" };
+
+            const updatedOrder = await this.orderRepo.updateUtr(orderId, utrNumber);
+            
+            // Auto-trigger verify
+            this.verifyUTRAndCompleteOrder(utrNumber).catch(err => {
+                console.error('Auto-payout failed for UTR', utrNumber, err);
+            });
+
+            return { success: true, data: updatedOrder };
+        } catch (err: any) {
+            return { success: false, error: err.message };
+        }
+    }
+
+    async verifyUTRAndCompleteOrder(utrNumber: string) {
+        try {
+            const order = await this.orderRepo.findByUtr(utrNumber);
+            if (!order) return { success: false, error: 'Order with given UTR not found' };
+            if (order.status !== 'PENDING' && order.status !== 'AWAITING_PAYMENT') return { success: false, error: 'Order not in payable state' };
+
+            const emailTx = await this.emailRepo.findByRrn(utrNumber);
+            if (!emailTx) return { success: false, error: 'Payment not received yet' };
+            if (emailTx.isUsed) return { success: false, error: 'UTR already used' };
+
+            if (emailTx.amount < (order.amount - 1)) {
+                return { success: false, error: 'Payment amount is less than order amount' };
+            }
+
+            await this.emailRepo.markAsUsed(emailTx.id);
+
+            const claimed = await this.orderRepo.claimOrderForProcessing(order.id, ['PENDING', 'AWAITING_PAYMENT']);
+            if (!claimed) return { success: false, error: 'Order already processing or completed' };
+
+            const calc = await this.solanaFacade.calculateUSDCAmount(Number(order.amount));
+            if (!calc.success || !calc.usdcAmount) {
+                await this.orderRepo.updateStatus({ id: order.id }, 'PENDING');
+                return { success: false, error: 'Failed to calculate USDC amount' };
+            }
+
+            const transferResult = await this.solanaFacade.transferUSDC(order.walletAddr, calc.usdcAmount);
+            if (!transferResult.success) {
+                await this.orderRepo.updateStatus({ id: order.id }, 'PENDING');
+                return { success: false, error: transferResult.error || 'Transfer failed' };
+            }
+
+            const updated = await this.orderRepo.updateCompleted(
+                order.id, 
+                transferResult.signature!, 
+                transferResult.recipientTokenAccount! || ""
+            );
+            return { success: true, data: updated };
+        } catch (err: any) {
+            await this.orderRepo.updateStatus({ utrNumber, status: 'PROCESSING' }, 'PENDING');
+            return { success: false, error: err.message };
+        }
     }
 }
-
-
-export { createOrderWithUser, getUserOrders, updateOrderUTR, verifyUTRAndCompleteOrder, deleteOrder };

@@ -1,143 +1,72 @@
 import Imap from "imap";
 import { simpleParser } from "mailparser";
-import { processEmailWebhook } from "./emailVerificationService";
+import { EmailWatcherEventBus } from "../events/EmailWatcherEventBus";
 
-const imap = new Imap({
-    user: process.env.EMAIL_USER as string,
-    password: process.env.EMAIL_PASS as string,
-    host: "imap.gmail.com",
-    port: 993,
-    tls: true,
-    tlsOptions: { rejectUnauthorized: false }
-});
+export class EmailWatcher {
+    private imap: Imap;
 
-function openInbox(cb: (err: Error | null, box: any) => void) {
-    imap.openBox("INBOX", false, cb);
-}
-
-// Helper to process a single message
-function processMessage(msg: Imap.ImapMessage) {
-    msg.on("body", (stream: any, info: any) => {
-        simpleParser(stream, async (err, parsed) => {
-            if (err) return console.error("Parsing error:", err);
-
-            const from = parsed.from?.text || "";
-            const subject = parsed.subject || "";
-            const text = parsed.text || "";
-            const html = parsed.html || "";
-
-            // Filter for Slice emails
-            if (!from.toLowerCase().includes("slice") && !subject.toLowerCase().includes("slice")) {
-                return;
-            }
-
-            console.log(`[Email Watcher] Processing email from: ${from}, Subject: ${subject}`);
-            console.log("[Email Watcher] ✅ Found Slice email! Processing...");
-
-            try {
-                // Direct service call instead of webhook fetch
-                const result = await processEmailWebhook(text || (html as string));
-                console.log("[Email Watcher] Processing result:", result);
-
-            } catch (error) {
-                console.error("[Email Watcher] ❌ Processing error:", error);
-            }
+    constructor(private eventBus: EmailWatcherEventBus) {
+        this.imap = new Imap({
+            user: process.env.EMAIL_USER as string,
+            password: process.env.EMAIL_PASS as string,
+            host: "imap.gmail.com",
+            port: 993,
+            tls: true,
+            tlsOptions: { rejectUnauthorized: false }
         });
-    });
-}
-
-function scanPastEmails(cb: () => void) {
-    console.log("[Email Watcher] 🔍 Scanning for Slice emails from the past 24 hours...");
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    // Search for emails since yesterday
-    imap.search(['ALL', ['SINCE', yesterday]], (err, results) => {
-        if (err) {
-            console.error("[Email Watcher] Search error:", err);
-            return cb();
-        }
-
-        if (!results || !results.length) {
-            console.log("[Email Watcher] No recent emails found.");
-            return cb();
-        }
-
-        console.log(`[Email Watcher] Found ${results.length} recent emails. Checking for Slice transactions...`);
-
-        const fetcher = imap.fetch(results, {
-            bodies: "",
-            struct: true
-        });
-
-        fetcher.on("message", processMessage);
-
-        fetcher.once('error', function (err) {
-            console.log('[Email Watcher] Fetch error: ' + err);
-        });
-
-        fetcher.once('end', function () {
-            console.log('[Email Watcher] Done scanning past emails.');
-            cb();
-        });
-    });
-}
-
-export function startEmailWatcher() {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        console.warn("[Email Watcher] Skipping watcher start: EMAIL_USER or EMAIL_PASS not set.");
-        return;
     }
 
-    imap.once("ready", () => {
-        openInbox((err, box) => {
-            if (err) {
-                console.error("[Email Watcher] Error opening inbox:", err);
-                return;
-            }
+    private extractData(emailBody: string) {
+        const result = { rrn: null as string|null, amount: null as number|null, sender: null as string|null, date: new Date().toISOString() };
+        
+        const rrnMatch = emailBody.match(/RRN\s+(\d{12})/i);
+        if (rrnMatch) result.rrn = rrnMatch[1];
+        
+        const amMatch = emailBody.match(/received\s+(?:₹|Rs\.?|INR)?\s*([\d,]+(?:\.\d{2})?)/i);
+        if (amMatch) result.amount = parseFloat(amMatch[1].replace(/,/g, ''));
+        
+        const senderMatch = emailBody.match(/From\s+([A-Za-z\s]+)(?=\n|\r|RRN)/i);
+        if (senderMatch) result.sender = senderMatch[1].trim();
+        
+        const dMatch = emailBody.match(/(?:Date|Sent):\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/i);
+        if (dMatch) result.date = dMatch[1];
+        
+        return result;
+    }
 
-            console.log("[Email Watcher] 📩 Gmail watcher started...");
-            console.log(`[Email Watcher] Watching for emails from: Slice`);
+    private processMessage(msg: Imap.ImapMessage) {
+        msg.on("body", (stream: any) => {
+            simpleParser(stream, async (err, parsed) => {
+                if (err) return;
+                const from = parsed.from?.text || "";
+                const subject = parsed.subject || "";
+                if (!from.toLowerCase().includes("slice") && !subject.toLowerCase().includes("slice")) return;
+                
+                const data = this.extractData(parsed.text || parsed.html as string);
+                if (data.rrn && data.amount && data.sender) {
+                    this.eventBus.emitFiatDeposit({ rrn: data.rrn, amount: data.amount, sender: data.sender, date: data.date });
+                }
+            });
+        });
+    }
 
-            // 1. Scan past emails first
-            scanPastEmails(() => {
-                console.log("[Email Watcher] 👀 Starting real-time watcher...");
+    public start() {
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
 
-                // 2. Listen for new mail
-                imap.on("mail", (numNewMsgs) => {
-                    console.log(`[Email Watcher] New email received! Total: ${numNewMsgs}`);
-
-                    const fetcher = imap.seq.fetch(box.messages.total + ":*", {
-                        bodies: "",
-                        struct: true
-                    });
-
-                    fetcher.on("message", processMessage);
-
-                    fetcher.once('error', function (err) {
-                        console.log('[Email Watcher] Fetch error: ' + err);
-                    });
-
-                    fetcher.once('end', function () {
-                        console.log('[Email Watcher] Done fetching new messages!');
-                    });
+        this.imap.once("ready", () => {
+            this.imap.openBox("INBOX", false, (err, box) => {
+                if (err) return;
+                this.imap.on("mail", () => {
+                    const fetcher = this.imap.seq.fetch(box.messages.total + ":*", { bodies: "", struct: true });
+                    fetcher.on("message", this.processMessage.bind(this));
                 });
             });
         });
-    });
 
-    imap.once("error", (err: any) => {
-        console.error("[Email Watcher] ❌ IMAP Error:", err);
-        setTimeout(() => {
-            console.log("[Email Watcher] Reconnecting...");
-            imap.connect();
-        }, 5000);
-    });
+        this.imap.once("error", () => {
+            setTimeout(() => this.imap.connect(), 5000);
+        });
 
-    imap.once("end", () => {
-        console.log("[Email Watcher] Connection ended");
-    });
-
-    imap.connect();
+        this.imap.connect();
+    }
 }
