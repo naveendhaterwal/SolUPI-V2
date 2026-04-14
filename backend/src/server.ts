@@ -51,6 +51,7 @@ const orderController = new OrderController(orderService);
 const router = express.Router();
 router.post('/orders', (req, res) => orderController.createOrder(req, res));
 router.get('/orders', (req, res) => orderController.getUserOrders(req, res));
+router.get('/orders/:orderId', (req, res) => orderController.getOrder(req, res));
 router.put('/orders/:orderId/utr', (req, res) => orderController.updateOrderUTR(req, res));
 router.delete('/orders/:orderId', (req, res) => orderController.deleteOrder(req, res));
 
@@ -65,7 +66,7 @@ app.get('/', (req, res) => {
 });
 
 // 4. Start Server
-app.listen(PORT, () => {
+app.listen(PORT as number, '0.0.0.0', () => {
     console.log(`🚀 SolUPI Server running cleanly on port ${PORT}`);
     emailWatcher.start();
 });

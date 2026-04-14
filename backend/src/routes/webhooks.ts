@@ -1,5 +1,5 @@
 import express from 'express';
-import { processEmailWebhook } from '../services/emailVerificationService';
+// import { processEmailWebhook } from '../services/emailVerificationService';
 
 const router = express.Router();
 
@@ -15,13 +15,14 @@ router.post('/email-parse', async (req, res) => {
             });
         }
 
-        const result = await processEmailWebhook(emailBody);
+        // const result = await processEmailWebhook(emailBody);
 
-        if (result.success) {
-            return res.status(200).json(result);
-        } else {
-            return res.status(400).json(result);
-        }
+        // if (result.success) {
+        //     return res.status(200).json(result);
+        // } else {
+        //     return res.status(400).json(result);
+        // }
+        return res.status(200).json({ success: false, message: "Webhook not implemented yet" });
 
     } catch (err: any) {
         console.error("Error in email webhook:", err);

@@ -63,6 +63,10 @@ export class OrderService {
         }
     }
 
+    async getOrderById(orderId: string) {
+        return this.orderRepo.findById(orderId);
+    }
+
     async deleteOrder(orderId: string, userId: string) {
         try {
             const order = await this.orderRepo.findByIdAndUser(orderId, userId);
@@ -99,29 +103,41 @@ export class OrderService {
     async verifyUTRAndCompleteOrder(utrNumber: string) {
         try {
             const order = await this.orderRepo.findByUtr(utrNumber);
+            console.log(`[verifyUTR] Checking UTR: ${utrNumber}. Order found: ${!!order}`);
             if (!order) return { success: false, error: 'Order with given UTR not found' };
+            
+            console.log(`[verifyUTR] Order status: ${order.status}`);
             if (order.status !== 'PENDING' && order.status !== 'AWAITING_PAYMENT') return { success: false, error: 'Order not in payable state' };
 
             const emailTx = await this.emailRepo.findByRrn(utrNumber);
+            console.log(`[verifyUTR] Email Transaction found: ${!!emailTx}`);
             if (!emailTx) return { success: false, error: 'Payment not received yet' };
+            
+            console.log(`[verifyUTR] Email Transaction isUsed: ${emailTx.isUsed}`);
             if (emailTx.isUsed) return { success: false, error: 'UTR already used' };
 
+            console.log(`[verifyUTR] Verifying amounts. Email amount: ${emailTx.amount}, Order amount: ${order.amount}`);
             if (emailTx.amount < (order.amount - 1)) {
                 return { success: false, error: 'Payment amount is less than order amount' };
             }
 
-            await this.emailRepo.markAsUsed(emailTx.id);
-
             const claimed = await this.orderRepo.claimOrderForProcessing(order.id, ['PENDING', 'AWAITING_PAYMENT']);
+            console.log(`[verifyUTR] Claimed order for processing: ${claimed}`);
             if (!claimed) return { success: false, error: 'Order already processing or completed' };
 
+            console.log(`[verifyUTR] Calculating USDC amount for: ${order.amount} INR`);
             const calc = await this.solanaFacade.calculateUSDCAmount(Number(order.amount));
+            console.log(`[verifyUTR] USDC Calculation output:`, calc);
+            
             if (!calc.success || !calc.usdcAmount) {
                 await this.orderRepo.updateStatus({ id: order.id }, 'PENDING');
                 return { success: false, error: 'Failed to calculate USDC amount' };
             }
 
+            console.log(`[verifyUTR] Executing Solana Transfer: ${calc.usdcAmount} USDC to ${order.walletAddr}`);
             const transferResult = await this.solanaFacade.transferUSDC(order.walletAddr, calc.usdcAmount);
+            console.log(`[verifyUTR] Solana Transfer result:`, transferResult);
+
             if (!transferResult.success) {
                 await this.orderRepo.updateStatus({ id: order.id }, 'PENDING');
                 return { success: false, error: transferResult.error || 'Transfer failed' };
@@ -132,6 +148,9 @@ export class OrderService {
                 transferResult.signature!, 
                 transferResult.recipientTokenAccount! || ""
             );
+            
+            // Mark the UTR transaction as used only after the payment transfer is fully successful
+            await this.emailRepo.markAsUsed(emailTx.id);
             return { success: true, data: updated };
         } catch (err: any) {
             await this.orderRepo.updateStatus({ utrNumber, status: 'PROCESSING' }, 'PENDING');
