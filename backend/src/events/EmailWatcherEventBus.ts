@@ -5,6 +5,7 @@ export interface FiatDepositEvent {
     amount: number;
     sender: string;
     date: string;
+    isUsed: boolean;
 }
 
 export class EmailWatcherEventBus extends EventEmitter {

@@ -17,7 +17,7 @@ export class EmailWatcher {
     }
 
     private extractData(emailBody: string) {
-        const result = { rrn: null as string|null, amount: null as number|null, sender: null as string|null, date: new Date().toISOString() };
+        const result = { rrn: null as string|null, amount: null as number|null, sender: null as string|null, date: new Date().toISOString(), isUsed: false };
         
         const rrnMatch = emailBody.match(/RRN\s+(\d{12})/i);
         if (rrnMatch) result.rrn = rrnMatch[1];
@@ -40,11 +40,22 @@ export class EmailWatcher {
                 if (err) return;
                 const from = parsed.from?.text || "";
                 const subject = parsed.subject || "";
-                if (!from.toLowerCase().includes("slice") && !subject.toLowerCase().includes("slice")) return;
+                
+                console.log(`[EmailWatcher] New email received. From: "${from}", Subject: "${subject}"`);
+                
+                if (!from.toLowerCase().includes("slice") && !subject.toLowerCase().includes("slice")) {
+                    console.log(`[EmailWatcher] Ignored email: does not contain "slice" in From or Subject.`);
+                    return;
+                }
                 
                 const data = this.extractData(parsed.text || parsed.html as string);
+                console.log(`[EmailWatcher] Extracted data from slice email:`, data);
+                
                 if (data.rrn && data.amount && data.sender) {
-                    this.eventBus.emitFiatDeposit({ rrn: data.rrn, amount: data.amount, sender: data.sender, date: data.date });
+                    console.log(`[EmailWatcher] Emitting FiatDepositEvent for RRN: ${data.rrn}`);
+                    this.eventBus.emitFiatDeposit({ rrn: data.rrn, amount: data.amount, sender: data.sender, date: data.date, isUsed: data.isUsed });
+                } else {
+                    console.log(`[EmailWatcher] Could not extract necessary RRN/Amount from email body.`);
                 }
             });
         });

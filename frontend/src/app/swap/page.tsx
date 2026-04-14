@@ -34,7 +34,7 @@ const tokens: Record<string, Token> = {
   USDC: { symbol: "USDC", name: "USD Coin", logo: "/usdc.png", price: 88.5 }, // Example price
 }
 
-export default function SwapInterface() {
+export default function SwapPage() {
   const router = useRouter()
   const [sellToken, setSellToken] = useState<string>("INR")
   const [buyToken, setBuyToken] = useState<string>("USDC")

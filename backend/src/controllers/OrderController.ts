@@ -39,13 +39,33 @@ export class OrderController {
         }
     }
 
+    getOrder = async (req: Request, res: Response) => {
+        try {
+            const { orderId } = req.params;
+            if (!orderId) return res.status(400).json({ success: false, message: "Missing orderId" });
+            
+            const order = await this.orderService.getOrderById(orderId);
+            if (order) return res.status(200).json({ success: true, data: order });
+            return res.status(404).json({ success: false, message: "Order not found" });
+        } catch (err: any) {
+            return res.status(500).json({ success: false, message: "Server error", error: err.message });
+        }
+    }
+
     updateOrderUTR = async (req: Request, res: Response) => {
         try {
             const { orderId } = req.params;
             const { utrNumber, userId } = req.body;
-            if (!orderId || !utrNumber || !userId) return res.status(400).json({ success: false, message: "Missing fields" });
+            console.log(`[OrderController] Received PUT /orders/${orderId}/utr - UTR: ${utrNumber}, User: ${userId}`);
+            
+            if (!orderId || !utrNumber || !userId) {
+                console.log(`[OrderController] Missing fields in payload`);
+                return res.status(400).json({ success: false, message: "Missing fields" });
+            }
             
             const result = await this.orderService.updateOrderUTR(orderId, utrNumber, userId);
+            console.log(`[OrderController] updateOrderUTR result:`, result);
+            
             if (result.success) return res.status(200).json({ success: true, data: result.data });
             return res.status(400).json({ success: false, message: result.error });
         } catch (err: any) {
