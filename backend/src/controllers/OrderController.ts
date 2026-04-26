@@ -45,9 +45,19 @@ export class OrderController {
             if (!orderId) return res.status(400).json({ success: false, message: "Missing orderId" });
             
             const order = await this.orderService.getOrderById(orderId);
-            if (order) return res.status(200).json({ success: true, data: order });
-            return res.status(404).json({ success: false, message: "Order not found" });
+            if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+            // Lazy verification: if order has UTR but is still PENDING, try to verify it
+            if (order.status === 'PENDING' && order.utrNumber) {
+                console.log(`[OrderController] Polling detected PENDING order ${order.id} with UTR ${order.utrNumber}. Triggering lazy verification...`);
+                this.orderService.verifyUTRAndCompleteOrder(order.utrNumber).catch(err => {
+                    console.error(`[OrderController] Lazy verification failed for ${order.id}:`, err);
+                });
+            }
+
+            return res.status(200).json({ success: true, data: order });
         } catch (err: any) {
+            console.error(`[OrderController] Error in getOrder:`, err);
             return res.status(500).json({ success: false, message: "Server error", error: err.message });
         }
     }

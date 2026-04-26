@@ -2,7 +2,10 @@ import {
     Connection,
     PublicKey,
     Keypair,
-    LAMPORTS_PER_SOL
+    LAMPORTS_PER_SOL,
+    Transaction,
+    sendAndConfirmTransaction,
+    ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {
     getAssociatedTokenAddressSync,
@@ -10,10 +13,6 @@ import {
     createTransferCheckedInstruction,
     TOKEN_PROGRAM_ID
 } from '@solana/spl-token';
-import {
-    Transaction,
-    sendAndConfirmRawTransaction,
-} from '@solana/web3.js';
 import bs58 from 'bs58';
 import { IPricingStrategy } from '../strategies/IPricingStrategy';
 
@@ -24,32 +23,21 @@ export class SolanaFacade {
     private platformWallet: Keypair | null = null;
     private platformTokenAccount: any = null;
 
-    private rpcUrls: string[] = [];
-    private currentRpcIndex = 0;
-
     constructor(private pricingStrategy: IPricingStrategy) {
         this.network = process.env.SOLANA_NETWORK || 'devnet';
-        const envRpc = process.env.SOLANA_RPC_URL;
-        if (!envRpc) throw new Error("SOLANA_RPC_URL must be defined in .env");
-        this.rpcUrls = [envRpc];
-        this.setupConnection();
-        this.usdcMint = new PublicKey(process.env.USDC_MINT_ADDRESS || 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
-    }
-
-    private setupConnection() {
-        const rpcUrl = this.rpcUrls[this.currentRpcIndex];
+        const rpcUrl = process.env.SOLANA_RPC_URL;
+        const wsUrl = process.env.SOLANA_WS_URL;
+        
+        if (!rpcUrl) throw new Error("SOLANA_RPC_URL must be defined in .env");
+        
         console.log(`[SolanaFacade] Connecting to RPC: ${rpcUrl}`);
         this.connection = new Connection(rpcUrl, {
-            commitment: 'finalized',
-            wsEndpoint: undefined,
+            commitment: 'confirmed',
+            wsEndpoint: wsUrl || undefined,
             confirmTransactionInitialTimeout: 60000
         });
-    }
 
-    private rotateRpc() {
-        this.currentRpcIndex = (this.currentRpcIndex + 1) % this.rpcUrls.length;
-        console.log(`[SolanaFacade] Rotating to next RPC...`);
-        this.setupConnection();
+        this.usdcMint = new PublicKey(process.env.USDC_MINT_ADDRESS || 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
     }
 
     async initialize(): Promise<void> {
@@ -63,7 +51,6 @@ export class SolanaFacade {
         
         console.log('Platform wallet loaded:', this.platformWallet.publicKey.toString());
         
-        // Derive offline to prevent Devnet StructError crashes
         this.platformTokenAccount = {
             address: getAssociatedTokenAddressSync(
                 this.usdcMint,
@@ -71,6 +58,30 @@ export class SolanaFacade {
             )
         };
         console.log('Platform USDC account:', this.platformTokenAccount.address.toString());
+
+        // ✅ Guard: Fail fast if wrong network or insufficient balance
+        await this.assertSufficientBalance();
+    }
+
+    private async assertSufficientBalance(): Promise<void> {
+        const MIN_SOL = 0.05 * LAMPORTS_PER_SOL;
+        const solBalance = await this.connection.getBalance(this.platformWallet!.publicKey);
+        if (solBalance < MIN_SOL) {
+            throw new Error(
+                `[SolanaFacade] FATAL: Platform wallet has only ${solBalance / LAMPORTS_PER_SOL} SOL. ` +
+                `Minimum 0.05 SOL required for fees. ` +
+                `Check SOLANA_RPC_URL — it may be pointing to the wrong network.`
+            );
+        }
+        try {
+            const tokenBalance = await this.connection.getTokenAccountBalance(this.platformTokenAccount.address);
+            console.log(`[SolanaFacade] ✅ Balances OK — SOL: ${solBalance / LAMPORTS_PER_SOL}, USDC: ${tokenBalance.value.uiAmount}`);
+        } catch {
+            throw new Error(
+                `[SolanaFacade] FATAL: Platform USDC token account not found on this network. ` +
+                `Check SOLANA_RPC_URL and USDC_MINT_ADDRESS.`
+            );
+        }
     }
 
     isValidAddress(address: string): boolean {
@@ -98,22 +109,12 @@ export class SolanaFacade {
 
     private async withRetry<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
         try {
-            const timeoutPromise = new Promise<T>((_, reject) =>
-                setTimeout(() => reject(new Error('Operation timed out after 90 seconds')), 90000)
-            );
-            return await Promise.race([operation(), timeoutPromise]);
+            return await operation();
         } catch (error: any) {
-            const isRateLimit = error.message.includes('429') || error.message.includes('503');
-            
-            if (error.message.includes('blockhash') || error.message.includes('fetch') || error.message.includes('timed out') || isRateLimit) {
-                this.rotateRpc();
-            }
-
             if (retries > 0) {
-                const backoff = isRateLimit ? delay * 3 : delay * 2;
-                console.log(`⚠️ Operation failed, retrying in ${backoff}ms... (${retries} attempts left). Error: ${error.message}`);
-                await new Promise(resolve => setTimeout(resolve, backoff));
-                return this.withRetry(operation, retries - 1, backoff);
+                console.log(`⚠️ Operation failed, retrying in ${delay}ms... (${retries} attempts left). Error: ${error.message}`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return this.withRetry(operation, retries - 1, delay * 2);
             }
             throw error;
         }
@@ -134,48 +135,41 @@ export class SolanaFacade {
             console.log(`[SolanaFacade] Recipient ATA Derived: ${recipientATA.toString()}`);
 
             // 1. Ensure Recipient ATA exists
-            const accountInfoResponse = await this.withRetry(() => 
-                this.rawRequest('getAccountInfo', [recipientATA.toString(), { encoding: 'base64' }])
+            const accountInfo = await this.withRetry(() => 
+                this.connection.getAccountInfo(recipientATA)
             );
-            const accountInfo = accountInfoResponse?.result?.value;
             
             if (!accountInfo) {
                 console.log(`[SolanaFacade] Recipient ATA does not exist. Creating...`);
-                await this.withRetry(async () => {
-                    const transaction = new Transaction().add(
-                        createAssociatedTokenAccountInstruction(
-                            this.platformWallet!.publicKey,
-                            recipientATA,
-                            recipientPublicKey,
-                            this.usdcMint
-                        )
-                    );
-                    const txSignature = await this.sendAndPoll(transaction);
-                    console.log(`[SolanaFacade] ATA Created. Signature: ${txSignature}`);
-                    return txSignature;
-                });
+                const transaction = new Transaction().add(
+                    createAssociatedTokenAccountInstruction(
+                        this.platformWallet!.publicKey,
+                        recipientATA,
+                        recipientPublicKey,
+                        this.usdcMint
+                    )
+                );
+                const txSignature = await this.sendAndConfirm(transaction);
+                console.log(`[SolanaFacade] ATA Created. Signature: ${txSignature}`);
             }
 
             // 2. Execute Transfer
             const amountInSmallestUnits = Math.floor(amountInUSDC * 1000000);
             console.log(`[SolanaFacade] Transferring tokens... Smallest units: ${amountInSmallestUnits}`);
             
-            const signature = await this.withRetry(async () => {
-                const transaction = new Transaction().add(
-                    createTransferCheckedInstruction(
-                        this.platformTokenAccount.address,
-                        this.usdcMint,
-                        recipientATA,
-                        this.platformWallet!.publicKey,
-                        amountInSmallestUnits,
-                        6 // USDC decimals
-                    )
-                );
-                
-                return await this.sendAndPoll(transaction);
-            });
+            const transaction = new Transaction().add(
+                createTransferCheckedInstruction(
+                    this.platformTokenAccount.address,
+                    this.usdcMint,
+                    recipientATA,
+                    this.platformWallet!.publicKey,
+                    amountInSmallestUnits,
+                    6 // USDC decimals
+                )
+            );
             
-            console.log(`[SolanaFacade] Transfer signature verified:`, signature);
+            const signature = await this.sendAndConfirm(transaction);
+            console.log(`[SolanaFacade] Transfer signature confirmed:`, signature);
 
             return {
                 success: true,
@@ -190,61 +184,24 @@ export class SolanaFacade {
         }
     }
 
-    private async sendAndPoll(transaction: Transaction): Promise<string> {
-        const blockhashResponse = await this.rawRequest('getLatestBlockhash', [{ commitment: 'finalized' }]);
-        
-        if (blockhashResponse.error) {
-            throw new Error(`RPC Error fetching blockhash: ${JSON.stringify(blockhashResponse.error)}`);
-        }
-        
-        const blockhash = blockhashResponse?.result?.value?.blockhash;
-        if (!blockhash) throw new Error("Failed to get blockhash via Raw RPC (result missing)");
-        
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = this.platformWallet!.publicKey;
-        
-        transaction.sign(this.platformWallet!);
-        
-        const wireTransaction = transaction.serialize().toString('base64');
-        const sendResponse = await this.rawRequest('sendTransaction', [wireTransaction, { encoding: "base64", skipPreflight: true }]);
-        
-        if (sendResponse.error) {
-            throw new Error(`RPC Error sending transaction: ${JSON.stringify(sendResponse.error)}`);
-        }
-        
-        const txSignature = sendResponse.result;
+    private async sendAndConfirm(transaction: Transaction): Promise<string> {
+        // Add Priority Fees to help land on devnet
+        transaction.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 100000 }));
+        transaction.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 200000 })); 
 
-        console.log(`[SolanaFacade] Signature generated: ${txSignature}. Bypassing confirmation polling (Fire-and-forget).`);
-        
-        return txSignature;
-    }
-
-    /**
-     * Helper to perform raw JSON-RPC requests to bypass library validation issues (StructError)
-     */
-    private async rawRequest(method: string, params: any[]): Promise<any> {
-        const rpcUrl = this.rpcUrls[this.currentRpcIndex];
-        try {
-            const response = await fetch(rpcUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 1,
-                    method,
-                    params
-                })
-            });
-
-            if (!response.ok) {
-                const body = await response.text().catch(() => 'No body');
-                throw new Error(`RPC Request failed with status ${response.status}: ${body.substring(0, 100)}`);
+        const signature = await sendAndConfirmTransaction(
+            this.connection,
+            transaction,
+            [this.platformWallet!],
+            {
+                commitment: 'confirmed',
+                preflightCommitment: 'confirmed',
+                skipPreflight: false,
+                maxRetries: 3
             }
+        );
 
-            return await response.json();
-        } catch (e: any) {
-            if (e.message.includes('status')) throw e;
-            throw new Error(`Fetch transport error: ${e.message}`);
-        }
+        console.log(`[SolanaFacade] Transaction confirmed on-chain!`);
+        return signature;
     }
 }

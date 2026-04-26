@@ -101,59 +101,88 @@ export class OrderService {
     }
 
     async verifyUTRAndCompleteOrder(utrNumber: string) {
+        const logPrefix = `[verifyUTR:${utrNumber}]`;
         try {
+            console.log(`${logPrefix} Starting verification process...`);
+            
             const order = await this.orderRepo.findByUtr(utrNumber);
-            console.log(`[verifyUTR] Checking UTR: ${utrNumber}. Order found: ${!!order}`);
-            if (!order) return { success: false, error: 'Order with given UTR not found' };
+            if (!order) {
+                console.log(`${logPrefix} ❌ Order with given UTR not found in database.`);
+                return { success: false, error: 'Order with given UTR not found' };
+            }
             
-            console.log(`[verifyUTR] Order status: ${order.status}`);
-            if (order.status !== 'PENDING' && order.status !== 'AWAITING_PAYMENT') return { success: false, error: 'Order not in payable state' };
+            console.log(`${logPrefix} Found order ${order.id}. Current status: ${order.status}`);
+            if (order.status !== 'PENDING' && order.status !== 'AWAITING_PAYMENT') {
+                console.log(`${logPrefix} ℹ️ Order is already in ${order.status} state. Skipping.`);
+                return { success: false, error: `Order is already ${order.status}` };
+            }
 
+            console.log(`${logPrefix} Checking for email transaction in database...`);
             const emailTx = await this.emailRepo.findByRrn(utrNumber);
-            console.log(`[verifyUTR] Email Transaction found: ${!!emailTx}`);
-            if (!emailTx) return { success: false, error: 'Payment not received yet' };
+            if (!emailTx) {
+                console.log(`${logPrefix} ⏳ Payment not found in email transactions yet. Scraper might still be processing.`);
+                return { success: false, error: 'Payment not received yet' };
+            }
             
-            console.log(`[verifyUTR] Email Transaction isUsed: ${emailTx.isUsed}`);
-            if (emailTx.isUsed) return { success: false, error: 'UTR already used' };
+            console.log(`${logPrefix} ✅ Found email transaction ${emailTx.id}. Amount: ${emailTx.amount}, isUsed: ${emailTx.isUsed}`);
+            if (emailTx.isUsed) {
+                console.log(`${logPrefix} ❌ This UTR has already been marked as used.`);
+                return { success: false, error: 'UTR already used' };
+            }
 
-            console.log(`[verifyUTR] Verifying amounts. Email amount: ${emailTx.amount}, Order amount: ${order.amount}`);
+            console.log(`${logPrefix} Validating amount... (Email: ${emailTx.amount} INR, Order: ${order.amount} INR)`);
+            // Allowing 1 INR difference for rounding/buffer
             if (emailTx.amount < (order.amount - 1)) {
+                console.log(`${logPrefix} ❌ Payment amount ${emailTx.amount} is less than required ${order.amount}.`);
                 return { success: false, error: 'Payment amount is less than order amount' };
             }
 
+            console.log(`${logPrefix} Attempting to claim order for processing...`);
             const claimed = await this.orderRepo.claimOrderForProcessing(order.id, ['PENDING', 'AWAITING_PAYMENT']);
-            console.log(`[verifyUTR] Claimed order for processing: ${claimed}`);
-            if (!claimed) return { success: false, error: 'Order already processing or completed' };
+            if (!claimed) {
+                console.log(`${logPrefix} ⚠️ Failed to claim order. It might have been picked up by another process.`);
+                return { success: false, error: 'Order already processing or completed' };
+            }
+            console.log(`${logPrefix} 🔒 Order locked for processing.`);
 
-            console.log(`[verifyUTR] Calculating USDC amount for: ${order.amount} INR`);
+            console.log(`${logPrefix} Calculating USDC payout...`);
             const calc = await this.solanaFacade.calculateUSDCAmount(Number(order.amount));
-            console.log(`[verifyUTR] USDC Calculation output:`, calc);
+            console.log(`${logPrefix} USDC Calculation: ${calc.usdcAmount} USDC at rate ${calc.rate}`);
             
             if (!calc.success || !calc.usdcAmount) {
+                console.log(`${logPrefix} ❌ Calculation failed. Reverting order to PENDING.`);
                 await this.orderRepo.updateStatus({ id: order.id }, 'PENDING');
                 return { success: false, error: 'Failed to calculate USDC amount' };
             }
 
-            console.log(`[verifyUTR] Executing Solana Transfer: ${calc.usdcAmount} USDC to ${order.walletAddr}`);
+            console.log(`${logPrefix} 🚀 Executing Solana Transfer: ${calc.usdcAmount} USDC -> ${order.walletAddr}`);
+            const startTime = Date.now();
             const transferResult = await this.solanaFacade.transferUSDC(order.walletAddr, calc.usdcAmount);
-            console.log(`[verifyUTR] Solana Transfer result:`, transferResult);
+            const duration = (Date.now() - startTime) / 1000;
+            
+            console.log(`${logPrefix} Solana Transfer result after ${duration.toFixed(2)}s:`, transferResult);
 
             if (!transferResult.success) {
+                console.log(`${logPrefix} ❌ Transfer failed: ${transferResult.error}. Reverting order to PENDING.`);
                 await this.orderRepo.updateStatus({ id: order.id }, 'PENDING');
                 return { success: false, error: transferResult.error || 'Transfer failed' };
             }
 
+            console.log(`${logPrefix} ✅ Transfer Successful! Updating order record...`);
             const updated = await this.orderRepo.updateCompleted(
                 order.id, 
                 transferResult.signature!, 
                 transferResult.recipientTokenAccount! || ""
             );
             
-            // Mark the UTR transaction as used only after the payment transfer is fully successful
+            console.log(`${logPrefix} Marking email transaction as used...`);
             await this.emailRepo.markAsUsed(emailTx.id);
+            
+            console.log(`${logPrefix} 🎉 Order ${order.id} fully completed and verified!`);
             return { success: true, data: updated };
         } catch (err: any) {
-            await this.orderRepo.updateStatus({ utrNumber, status: 'PROCESSING' }, 'PENDING');
+            console.error(`${logPrefix} 💥 UNEXPECTED ERROR:`, err);
+            await this.orderRepo.updateStatus({ id: (await this.orderRepo.findByUtr(utrNumber))?.id || "", status: 'PROCESSING' }, 'PENDING');
             return { success: false, error: err.message };
         }
     }

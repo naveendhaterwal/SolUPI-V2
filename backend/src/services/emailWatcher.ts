@@ -62,22 +62,61 @@ export class EmailWatcher {
     }
 
     public start() {
-        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+            console.error("[EmailWatcher] EMAIL_USER or EMAIL_PASS not defined. Scraper disabled.");
+            return;
+        }
+
+        console.log(`[EmailWatcher] Starting IMAP watcher for ${process.env.EMAIL_USER}...`);
 
         this.imap.once("ready", () => {
+            console.log("[EmailWatcher] IMAP Connection ready.");
             this.imap.openBox("INBOX", false, (err, box) => {
-                if (err) return;
+                if (err) {
+                    console.error("[EmailWatcher] Error opening INBOX:", err);
+                    return;
+                }
+                
+                console.log("[EmailWatcher] Watching INBOX for new mail...");
+                
+                // 1. Event-based watch (Push)
                 this.imap.on("mail", () => {
-                    const fetcher = this.imap.seq.fetch(box.messages.total + ":*", { bodies: "", struct: true });
-                    fetcher.on("message", this.processMessage.bind(this));
+                    console.log("[EmailWatcher] New mail event detected via push.");
+                    this.fetchNewMessages(box);
                 });
+
+                // 2. Periodic poll (Fallback for stability)
+                setInterval(() => {
+                    console.log("[EmailWatcher] Running periodic poll...");
+                    this.fetchNewMessages(box);
+                }, 30000); // Every 30 seconds
             });
         });
 
-        this.imap.once("error", () => {
-            setTimeout(() => this.imap.connect(), 5000);
+        this.imap.on("error", (err: Error) => {
+            console.error("[EmailWatcher] IMAP Error:", err.message);
+            if (!err.message.includes("Invalid credentials")) {
+                setTimeout(() => {
+                    if (this.imap.state === 'disconnected') {
+                        console.log("[EmailWatcher] Attempting to reconnect...");
+                        this.imap.connect();
+                    }
+                }, 30000);
+            }
         });
 
-        this.imap.connect();
+        try {
+            this.imap.connect();
+        } catch (error) {
+            console.error("[EmailWatcher] Failed to connect:", error);
+        }
+    }
+
+    private fetchNewMessages(box: Imap.Box) {
+        // Fetch only the most recent messages to check for deposits
+        const total = box.messages.total;
+        const start = Math.max(1, total - 5); // Fetch last 5 messages to be safe
+        const fetcher = this.imap.seq.fetch(`${start}:*`, { bodies: "", struct: true });
+        fetcher.on("message", this.processMessage.bind(this));
     }
 }
