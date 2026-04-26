@@ -15,6 +15,7 @@ import {
 } from '@solana/spl-token';
 import bs58 from 'bs58';
 import { IPricingStrategy } from '../strategies/IPricingStrategy';
+import { AppConfig } from '../config/AppConfig';
 
 export class SolanaFacade {
     private connection: Connection;
@@ -24,28 +25,25 @@ export class SolanaFacade {
     private platformTokenAccount: any = null;
 
     constructor(private pricingStrategy: IPricingStrategy) {
-        this.network = process.env.SOLANA_NETWORK || 'devnet';
-        const rpcUrl = process.env.SOLANA_RPC_URL;
-        const wsUrl = process.env.SOLANA_WS_URL;
-        
-        if (!rpcUrl) throw new Error("SOLANA_RPC_URL must be defined in .env");
-        
-        console.log(`[SolanaFacade] Connecting to RPC: ${rpcUrl}`);
-        this.connection = new Connection(rpcUrl, {
+        // ✅ Singleton — read config from centralised AppConfig
+        const cfg = AppConfig.getInstance();
+        this.network = cfg.solanaNetwork;
+
+        console.log(`[SolanaFacade] Connecting to RPC: ${cfg.solanaRpcUrl}`);
+        this.connection = new Connection(cfg.solanaRpcUrl, {
             commitment: 'confirmed',
-            wsEndpoint: wsUrl || undefined,
+            wsEndpoint: cfg.solanaWsUrl || undefined,
             confirmTransactionInitialTimeout: 60000
         });
 
-        this.usdcMint = new PublicKey(process.env.USDC_MINT_ADDRESS || 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
+        this.usdcMint = new PublicKey(cfg.usdcMintAddress);
     }
 
     async initialize(): Promise<void> {
         if (this.platformWallet) return;
 
-        const privateKey = process.env.PRIVATE_KEY;
-        if (!privateKey) throw new Error("private key not found");
-
+        // ✅ Singleton — private key from AppConfig (already validated at startup)
+        const { privateKey } = AppConfig.getInstance();
         const privateKeyBytes = bs58.decode(privateKey);
         this.platformWallet = Keypair.fromSecretKey(privateKeyBytes);
         

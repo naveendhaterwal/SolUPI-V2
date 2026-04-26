@@ -1,0 +1,777 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#fff;--bg2:#f7f7f5;--bg3:#eeedfe;--bg4:#e1f5ee;--bg5:#faeeda;--bg6:#faece7;--bg7:#fbeaf0;--bg8:#eaf3de;--bg9:#e6f1fb;
+--border:#c8c6bc;--sep:#d0cec4;
+--txt:#1a1a18;--txt2:#3d3d3a;--txt3:#5f5e5a;
+--purple:#534AB7;--purple-lt:#EEEDFE;--purple-dk:#3C3489;
+--teal:#0F6E56;--teal-lt:#E1F5EE;--teal-dk:#085041;
+--amber:#854F0B;--amber-lt:#FAEEDA;--amber-dk:#633806;
+--coral:#993C1D;--coral-lt:#FAECE7;--coral-dk:#712B13;
+--pink:#993556;--pink-lt:#FBEAF0;--pink-dk:#72243E;
+--green:#3B6D11;--green-lt:#EAF3DE;--green-dk:#27500A;
+--blue:#185FA5;--blue-lt:#E6F1FB;--blue-dk:#0C447C;
+--gray:#5F5E5A;--gray-lt:#F1EFE8;--gray-dk:#444441;
+--mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+@media(prefers-color-scheme:dark){
+:root{
+--bg:#1c1c1a;--bg2:#252523;--bg3:#26215C;--bg4:#04342C;--bg5:#412402;--bg6:#4A1B0C;--bg7:#4B1528;--bg8:#173404;--bg9:#042C53;
+--border:#444441;--sep:#3a3a38;
+--txt:#e8e6de;--txt2:#c2c0b6;--txt3:#888780;
+--purple:#AFA9EC;--purple-lt:#26215C;--purple-dk:#CECBF6;
+--teal:#5DCAA5;--teal-lt:#04342C;--teal-dk:#9FE1CB;
+--amber:#EF9F27;--amber-lt:#412402;--amber-dk:#FAC775;
+--coral:#F0997B;--coral-lt:#4A1B0C;--coral-dk:#F5C4B3;
+--pink:#ED93B1;--pink-lt:#4B1528;--pink-dk:#F4C0D1;
+--green:#97C459;--green-lt:#173404;--green-dk:#C0DD97;
+--blue:#85B7EB;--blue-lt:#042C53;--blue-dk:#B5D4F4;
+--gray:#B4B2A9;--gray-lt:#2C2C2A;--gray-dk:#D3D1C7;
+}}
+body{font-family:ui-sans-serif,system-ui,sans-serif;background:transparent;color:var(--txt);padding:0 0 32px}
+.diagram{padding:24px 16px;display:flex;flex-direction:column;gap:0}
+.layer{margin-bottom:32px}
+.layer-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);padding:0 4px 8px;border-left:3px solid var(--border);padding-left:10px;margin-bottom:12px}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;justify-content:flex-start}
+.row.center{justify-content:center}
+.row.spread{justify-content:space-between}
+
+.cls{
+border:1.5px solid var(--border);border-radius:6px;overflow:hidden;
+min-width:200px;flex-shrink:0;
+background:var(--bg);
+font-size:12px;
+}
+.cls-header{
+padding:6px 12px 8px;
+display:flex;flex-direction:column;align-items:center;gap:1px;
+}
+.stereotype{font-size:10px;color:var(--txt3);font-style:italic;line-height:1.3}
+.classname{font-size:13px;font-weight:700;color:var(--txt);line-height:1.3;text-align:center}
+.classname.italic{font-style:italic}
+.sep{height:1px;background:var(--sep);width:100%}
+.compartment{padding:6px 12px;display:flex;flex-direction:column;gap:2px;min-height:28px}
+.attr,.meth{font-size:11px;line-height:1.6;white-space:nowrap;font-family:var(--mono);color:var(--txt2)}
+.attr .vis,.meth .vis{color:var(--txt3);font-style:normal;width:12px;display:inline-block}
+.empty{font-size:10px;color:var(--txt3);font-style:italic;padding:2px 0}
+
+.cls.purple .cls-header{background:var(--purple-lt)}
+.cls.purple{border-color:var(--purple)}
+.cls.purple .stereotype{color:var(--purple)}
+.cls.purple .classname{color:var(--purple-dk)}
+
+.cls.teal .cls-header{background:var(--teal-lt)}
+.cls.teal{border-color:var(--teal)}
+.cls.teal .stereotype{color:var(--teal)}
+.cls.teal .classname{color:var(--teal-dk)}
+
+.cls.amber .cls-header{background:var(--amber-lt)}
+.cls.amber{border-color:var(--amber)}
+.cls.amber .stereotype{color:var(--amber)}
+.cls.amber .classname{color:var(--amber-dk)}
+
+.cls.coral .cls-header{background:var(--coral-lt)}
+.cls.coral{border-color:var(--coral)}
+.cls.coral .stereotype{color:var(--coral)}
+.cls.coral .classname{color:var(--coral-dk)}
+
+.cls.pink .cls-header{background:var(--pink-lt)}
+.cls.pink{border-color:var(--pink)}
+.cls.pink .stereotype{color:var(--pink)}
+.cls.pink .classname{color:var(--pink-dk)}
+
+.cls.green .cls-header{background:var(--green-lt)}
+.cls.green{border-color:var(--green)}
+.cls.green .stereotype{color:var(--green)}
+.cls.green .classname{color:var(--green-dk)}
+
+.cls.blue .cls-header{background:var(--blue-lt)}
+.cls.blue{border-color:var(--blue)}
+.cls.blue .stereotype{color:var(--blue)}
+.cls.blue .classname{color:var(--blue-dk)}
+
+.cls.gray .cls-header{background:var(--gray-lt)}
+.cls.gray{border-color:var(--gray)}
+.cls.gray .stereotype{color:var(--gray)}
+.cls.gray .classname{color:var(--gray-dk)}
+
+.connector-row{display:flex;align-items:center;justify-content:center;gap:0;padding:4px 0;flex-wrap:wrap}
+.conn-group{display:flex;flex-direction:column;align-items:center;gap:0}
+.arrow-v{display:flex;flex-direction:column;align-items:center;font-size:18px;line-height:1;color:var(--txt3);padding:2px 0}
+.arrow-v .line{width:1.5px;background:var(--border);height:20px}
+.arrow-v .head{color:var(--txt3);font-size:14px;margin-top:-2px}
+.arrow-v.dashed .line{background:transparent;border-left:1.5px dashed var(--border)}
+.arrow-v.colored .line{background:var(--purple);border-color:var(--purple)}
+.arrow-v.colored .head{color:var(--purple)}
+.arrow-h{display:flex;align-items:center;gap:0;color:var(--txt3);font-size:12px;padding:0 4px}
+.arrow-h .line{height:1.5px;width:40px;background:var(--border)}
+.arrow-h .head{margin-left:-2px;font-size:14px}
+.arrow-h.dashed .line{background:transparent;border-top:1.5px dashed var(--border)}
+.rel-label{font-size:10px;color:var(--txt3);font-style:italic;text-align:center;padding:2px 0}
+.chain-row{display:flex;align-items:center;flex-wrap:wrap;gap:0}
+.chain-arrow{font-size:18px;color:var(--green);padding:0 4px;align-self:center;margin-top:10px}
+.states-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.wide{width:100%}
+</style>
+
+<div class="diagram">
+
+<div class="layer">
+<div class="layer-label">① Singleton — Configuration</div>
+<div class="row center">
+<div class="cls purple" style="min-width:280px">
+<div class="cls-header">
+<span class="stereotype">«singleton»</span>
+<span class="classname">AppConfig</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> instance: AppConfig</span>
+<span class="attr"><span class="vis">-</span> solanaPrivKey: string</span>
+<span class="attr"><span class="vis">-</span> rpcUrl: string</span>
+<span class="attr"><span class="vis">-</span> emailUser: string</span>
+<span class="attr"><span class="vis">-</span> emailPass: string</span>
+<span class="attr"><span class="vis">-</span> imapHost: string</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getInstance(): AppConfig</span>
+<span class="meth"><span class="vis">-</span> constructor()</span>
+</div>
+</div>
+</div>
+</div>
+
+<div class="layer">
+<div class="layer-label">② Abstract Factory — Email Parsing</div>
+<div class="row center">
+<div class="cls teal" style="min-width:240px">
+<div class="cls-header">
+<span class="stereotype">«interface»</span>
+<span class="classname italic">IEmailParser</span>
+</div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> parse(raw: string): ParsedEmail</span>
+<span class="meth"><span class="vis">+</span> canHandle(sender: string): boolean</span>
+</div>
+</div>
+</div>
+
+<div class="arrow-v" style="align-self:center;margin:0 auto"><div class="line" style="height:16px"></div></div>
+
+<div class="row center" style="gap:32px">
+<div class="cls teal" style="min-width:230px">
+<div class="cls-header">
+<span class="stereotype">«concrete»</span>
+<span class="classname">SliceEmailParser</span>
+</div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> parse(raw: string): ParsedEmail</span>
+<span class="meth"><span class="vis">+</span> canHandle(sender: string): boolean</span>
+</div>
+</div>
+
+<div class="cls teal" style="min-width:230px">
+<div class="cls-header">
+<span class="stereotype">«concrete»</span>
+<span class="classname">HdfcEmailParser</span>
+</div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> parse(raw: string): ParsedEmail</span>
+<span class="meth"><span class="vis">+</span> canHandle(sender: string): boolean</span>
+</div>
+</div>
+
+<div class="cls green" style="min-width:240px">
+<div class="cls-header">
+<span class="stereotype">«factory»</span>
+<span class="classname">EmailParserFactory</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> parsers: IEmailParser[]</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> create(sender: string): IEmailParser</span>
+<span class="meth"><span class="vis">+</span> register(p: IEmailParser): void</span>
+</div>
+</div>
+</div>
+</div>
+
+<div class="layer">
+<div class="layer-label">③ Decorator — Pricing Strategy</div>
+<div class="row center">
+<div class="cls amber" style="min-width:280px">
+<div class="cls-header">
+<span class="stereotype">«interface»</span>
+<span class="classname italic">IPricingStrategy</span>
+</div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getUsdcRate(): Promise&lt;number&gt;</span>
+</div>
+</div>
+</div>
+
+<div class="arrow-v" style="align-self:center;margin:0 auto"><div class="line" style="height:16px"></div></div>
+
+<div class="row center" style="gap:24px">
+<div class="cls amber" style="min-width:230px">
+<div class="cls-header">
+<span class="stereotype">«concrete»</span>
+<span class="classname">ExchangeRateApiStrategy</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> apiKey: string</span>
+<span class="attr"><span class="vis">-</span> baseUrl: string</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getUsdcRate(): Promise&lt;number&gt;</span>
+</div>
+</div>
+
+<div class="cls amber" style="min-width:230px">
+<div class="cls-header">
+<span class="stereotype">«decorator»</span>
+<span class="classname">CachedPricingStrategy</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> inner: IPricingStrategy</span>
+<span class="attr"><span class="vis">-</span> cache: Map&lt;string, number&gt;</span>
+<span class="attr"><span class="vis">-</span> ttlMs: number</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getUsdcRate(): Promise&lt;number&gt;</span>
+</div>
+</div>
+
+<div class="cls amber" style="min-width:230px">
+<div class="cls-header">
+<span class="stereotype">«decorator»</span>
+<span class="classname">LoggedPricingStrategy</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> inner: IPricingStrategy</span>
+<span class="attr"><span class="vis">-</span> logger: Logger</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getUsdcRate(): Promise&lt;number&gt;</span>
+</div>
+</div>
+</div>
+</div>
+
+<div class="layer">
+<div class="layer-label">④ Facade — Blockchain + Core Services</div>
+<div class="row spread" style="gap:16px;align-items:flex-start">
+
+<div class="cls blue" style="min-width:260px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«facade»</span>
+<span class="classname">SolanaFacade</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> config: AppConfig</span>
+<span class="attr"><span class="vis">-</span> pricing: IPricingStrategy</span>
+<span class="attr"><span class="vis">-</span> connection: Connection</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getUsdcRate(): Promise&lt;number&gt;</span>
+<span class="meth"><span class="vis">+</span> transferUsdc(to: string, amt: number)</span>
+<span class="meth"><span class="vis">+</span> getOrCreateTokenAccount(wallet)</span>
+<span class="meth"><span class="vis">+</span> signAndSend(tx: Transaction)</span>
+</div>
+</div>
+
+<div class="cls blue" style="min-width:260px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«service»</span>
+<span class="classname">OrderService</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> commandBus: CommandBus</span>
+<span class="attr"><span class="vis">-</span> queryBuilder: OrderQueryBuilder</span>
+<span class="attr"><span class="vis">-</span> verifyChain: IVerificationHandler</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> createOrder(dto: CreateOrderDto)</span>
+<span class="meth"><span class="vis">+</span> updateOrderUTR(dto: UpdateUTRDto)</span>
+<span class="meth"><span class="vis">+</span> getUserOrders(filters: OrderFilters)</span>
+<span class="meth"><span class="vis">+</span> verifyUTRAndCompleteOrder(utr)</span>
+</div>
+</div>
+
+<div class="cls blue" style="min-width:230px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«watcher»</span>
+<span class="classname">EmailWatcher</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> factory: EmailParserFactory</span>
+<span class="attr"><span class="vis">-</span> config: AppConfig</span>
+<span class="attr"><span class="vis">-</span> imapClient: ImapClient</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> pollImap(): Promise&lt;void&gt;</span>
+<span class="meth"><span class="vis">+</span> emit(event: FiatDepositEvent)</span>
+<span class="meth"><span class="vis">-</span> parseInbox(mails: Mail[])</span>
+</div>
+</div>
+
+<div class="cls blue" style="min-width:220px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«controller»</span>
+<span class="classname">OrderController</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> orderService: OrderService</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> createOrder(req, res)</span>
+<span class="meth"><span class="vis">+</span> submitUTR(req, res)</span>
+<span class="meth"><span class="vis">+</span> getOrders(req, res)</span>
+<span class="meth"><span class="vis">+</span> getOrderById(req, res)</span>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="layer">
+<div class="layer-label">⑤ Repositories + Unit of Work + Builder</div>
+<div class="row spread" style="gap:16px;align-items:flex-start">
+
+<div class="cls coral" style="min-width:240px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«repository»</span>
+<span class="classname">OrderRepository</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> prisma: PrismaClient</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> findById(id: string): Order</span>
+<span class="meth"><span class="vis">+</span> findByStatus(s: OrderStatus)</span>
+<span class="meth"><span class="vis">+</span> update(id: string, data: Partial)</span>
+<span class="meth"><span class="vis">+</span> create(dto: CreateOrderDto)</span>
+</div>
+</div>
+
+<div class="cls coral" style="min-width:260px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«repository»</span>
+<span class="classname">EmailTransactionRepository</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> prisma: PrismaClient</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> findByUTR(utr: string): EmailTx</span>
+<span class="meth"><span class="vis">+</span> findUnused(): EmailTx[]</span>
+<span class="meth"><span class="vis">+</span> markUsed(id: string): void</span>
+<span class="meth"><span class="vis">+</span> create(data: EmailTxDto)</span>
+</div>
+</div>
+
+<div class="cls coral" style="min-width:250px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«unit of work»</span>
+<span class="classname">PayoutUnitOfWork</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> prisma: PrismaClient</span>
+<span class="attr"><span class="vis">-</span> orderRepo: OrderRepository</span>
+<span class="attr"><span class="vis">-</span> emailTxRepo: EmailTransactionRepository</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> execute(orderId, emailTxId): Promise</span>
+<span class="meth"><span class="vis">-</span> runTransaction(ctx): Promise</span>
+</div>
+</div>
+
+<div class="cls coral" style="min-width:250px;flex:1">
+<div class="cls-header">
+<span class="stereotype">«builder»</span>
+<span class="classname">OrderQueryBuilder</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> query: Prisma.OrderWhereInput</span>
+<span class="attr"><span class="vis">-</span> orderBy: Prisma.OrderOrderByInput</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> forUser(userId: string): this</span>
+<span class="meth"><span class="vis">+</span> withStatus(s: OrderStatus): this</span>
+<span class="meth"><span class="vis">+</span> withSearch(q: string): this</span>
+<span class="meth"><span class="vis">+</span> withDateRange(from, to): this</span>
+<span class="meth"><span class="vis">+</span> build(): Prisma.OrderWhereInput</span>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="layer">
+<div class="layer-label">⑥ State Machine — Order Lifecycle</div>
+
+<div class="row center" style="gap:24px;margin-bottom:12px">
+<div class="cls pink" style="min-width:270px">
+<div class="cls-header">
+<span class="stereotype">«interface»</span>
+<span class="classname italic">IOrderState</span>
+</div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getName(): OrderStatus</span>
+<span class="meth"><span class="vis">+</span> canTransitionTo(next: IOrderState): boolean</span>
+<span class="meth"><span class="vis">+</span> getAllowedTransitions(): OrderStatus[]</span>
+</div>
+</div>
+
+<div class="cls pink" style="min-width:270px">
+<div class="cls-header">
+<span class="stereotype">«state machine»</span>
+<span class="classname">OrderStateMachine</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> currentState: IOrderState</span>
+<span class="attr"><span class="vis">-</span> stateMap: Map&lt;OrderStatus, IOrderState&gt;</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> transition(next: OrderStatus): void</span>
+<span class="meth"><span class="vis">+</span> getState(): IOrderState</span>
+<span class="meth"><span class="vis">-</span> validate(next: IOrderState): void</span>
+</div>
+</div>
+</div>
+
+<div class="states-grid">
+<div class="cls pink">
+<div class="cls-header"><span class="stereotype">«state»</span><span class="classname">PendingState</span></div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getName(): "PENDING"</span>
+<span class="meth"><span class="vis">+</span> canTransitionTo(s): boolean</span>
+</div>
+</div>
+<div class="cls pink">
+<div class="cls-header"><span class="stereotype">«state»</span><span class="classname">ProcessingState</span></div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getName(): "PROCESSING"</span>
+<span class="meth"><span class="vis">+</span> canTransitionTo(s): boolean</span>
+</div>
+</div>
+<div class="cls pink">
+<div class="cls-header"><span class="stereotype">«state»</span><span class="classname">CompletedState</span></div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getName(): "COMPLETED"</span>
+<span class="meth"><span class="vis">+</span> canTransitionTo(s): boolean</span>
+</div>
+</div>
+<div class="cls pink">
+<div class="cls-header"><span class="stereotype">«state»</span><span class="classname">FailedState</span></div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getName(): "FAILED"</span>
+<span class="meth"><span class="vis">+</span> canTransitionTo(s): boolean</span>
+</div>
+</div>
+<div class="cls pink">
+<div class="cls-header"><span class="stereotype">«state»</span><span class="classname">CancelledState</span></div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getName(): "CANCELLED"</span>
+<span class="meth"><span class="vis">+</span> canTransitionTo(s): boolean</span>
+</div>
+</div>
+<div class="cls pink">
+<div class="cls-header"><span class="stereotype">«state»</span><span class="classname">AwaitingPaymentState</span></div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> getName(): "AWAITING_PAYMENT"</span>
+<span class="meth"><span class="vis">+</span> canTransitionTo(s): boolean</span>
+</div>
+</div>
+</div>
+</div>
+
+<div class="layer">
+<div class="layer-label">⑦ Command — Command Bus</div>
+<div class="row center" style="gap:24px;align-items:flex-start">
+
+<div class="cls purple" style="min-width:240px">
+<div class="cls-header">
+<span class="stereotype">«command»</span>
+<span class="classname">CreateOrderCommand</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">+</span> userId: string</span>
+<span class="attr"><span class="vis">+</span> amountInr: number</span>
+<span class="attr"><span class="vis">+</span> walletAddress: string</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> validate(): boolean</span>
+</div>
+</div>
+
+<div class="cls purple" style="min-width:260px">
+<div class="cls-header">
+<span class="stereotype">«command bus»</span>
+<span class="classname">CommandBus</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> handlers: Map&lt;string, Handler&gt;</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> execute(cmd: ICommand): Promise</span>
+<span class="meth"><span class="vis">+</span> register(name, handler): void</span>
+<span class="meth"><span class="vis">-</span> resolve(cmd: ICommand): Handler</span>
+</div>
+</div>
+
+<div class="cls purple" style="min-width:240px">
+<div class="cls-header">
+<span class="stereotype">«command»</span>
+<span class="classname">UpdateOrderUTRCommand</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">+</span> orderId: string</span>
+<span class="attr"><span class="vis">+</span> utrNumber: string</span>
+<span class="attr"><span class="vis">+</span> userId: string</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> validate(): boolean</span>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="layer">
+<div class="layer-label">⑧ Chain of Responsibility — Verification Pipeline</div>
+
+<div class="row center" style="gap:24px;margin-bottom:14px">
+<div class="cls teal" style="min-width:270px">
+<div class="cls-header">
+<span class="stereotype">«interface»</span>
+<span class="classname italic">IVerificationHandler</span>
+</div>
+<div class="sep"></div>
+<div class="compartment"><span class="empty">(no attributes)</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> setNext(h: IVerificationHandler): this</span>
+<span class="meth"><span class="vis">+</span> handle(ctx: VerificationContext): Promise</span>
+</div>
+</div>
+
+<div class="cls teal" style="min-width:270px">
+<div class="cls-header">
+<span class="stereotype">«abstract»</span>
+<span class="classname italic">BaseVerificationHandler</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">#</span> next: IVerificationHandler | null</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> setNext(h: IVerificationHandler): this</span>
+<span class="meth"><span class="vis">+</span> handle(ctx: VerificationContext): Promise</span>
+<span class="meth"><span class="vis">#</span> passToNext(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+</div>
+
+<div style="font-size:10px;color:var(--txt3);text-align:center;margin-bottom:8px;font-style:italic">All handlers below extend BaseVerificationHandler — chain executes left → right in sequence</div>
+
+<div class="chain-row" style="flex-wrap:wrap;gap:0;justify-content:center">
+
+<div class="cls green" style="min-width:190px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 1</span><span class="classname">OrderExistsHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> orderRepo: OrderRepository</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+<div class="chain-arrow">→</div>
+
+<div class="cls green" style="min-width:190px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 2</span><span class="classname">OrderStatusHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> stateMachine: OrderStateMachine</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+<div class="chain-arrow">→</div>
+
+<div class="cls green" style="min-width:210px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 3</span><span class="classname">EmailTransactionHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> emailTxRepo: EmailTransactionRepository</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+<div class="chain-arrow">→</div>
+
+<div class="cls green" style="min-width:200px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 4</span><span class="classname">AmountValidationHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> tolerancePct: number</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+</div>
+
+<div style="text-align:center;font-size:18px;color:var(--green);padding:4px 0">↓</div>
+
+<div class="chain-row" style="flex-wrap:wrap;gap:0;justify-content:center">
+
+<div class="cls green" style="min-width:190px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 5</span><span class="classname">OrderClaimHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> orderRepo: OrderRepository</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+<div class="chain-arrow">→</div>
+
+<div class="cls green" style="min-width:200px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 6</span><span class="classname">USDCCalculationHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> solanaFacade: SolanaFacade</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+<div class="chain-arrow">→</div>
+
+<div class="cls green" style="min-width:200px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 7</span><span class="classname">SolanaTransferHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> solanaFacade: SolanaFacade</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+<div class="chain-arrow">→</div>
+
+<div class="cls green" style="min-width:210px;margin:4px">
+<div class="cls-header"><span class="stereotype">«handler»  step 8</span><span class="classname">OrderCompletionHandler</span></div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="attr"><span class="vis">-</span> payoutUoW: PayoutUnitOfWork</span>
+</div>
+<div class="sep"></div>
+<div class="compartment">
+<span class="meth"><span class="vis">+</span> handle(ctx): Promise&lt;void&gt;</span>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="layer" style="margin-bottom:0">
+<div class="layer-label">Legend</div>
+<div style="display:flex;flex-wrap:wrap;gap:20px;font-size:11px;color:var(--txt3);font-family:var(--mono)">
+<span><span style="color:var(--txt2)">+</span> public &nbsp; <span style="color:var(--txt2)">-</span> private &nbsp; <span style="color:var(--txt2)">#</span> protected</span>
+<span style="border-left:1px solid var(--sep);padding-left:16px">«interface» = italic class name</span>
+<span style="border-left:1px solid var(--sep);padding-left:16px">«abstract» = italic class name</span>
+<span style="border-left:1px solid var(--sep);padding-left:16px">Colors encode pattern family, not sequence</span>
+<span style="border-left:1px solid var(--sep);padding-left:16px">→ in chain = setNext() dependency</span>
+</div>
+</div>
+
+</div>

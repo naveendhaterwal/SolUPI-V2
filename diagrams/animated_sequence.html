@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolUPI Interactive Flow</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Mermaid -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.mermaid = mermaid;
+        mermaid.initialize({ 
+            startOnLoad: false, 
+            securityLevel: 'loose',
+            theme: 'base',
+            themeVariables: {
+                fontFamily: '"JetBrains Mono", monospace',
+                primaryColor: '#0a0a0a',
+                primaryTextColor: '#ffffff',
+                primaryBorderColor: '#00f0ff',
+                lineColor: '#00f0ff',
+                secondaryColor: '#141414',
+                tertiaryColor: '#0a0a0a',
+                actorBkg: '#050505',
+                actorBorder: '#00f0ff',
+                actorTextColor: '#ffffff',
+                signalColor: '#a0a0a0',
+                signalTextColor: '#ffffff',
+                noteBkgColor: '#0a0a0a',
+                noteBorderColor: '#00f0ff',
+                noteTextColor: '#00f0ff'
+            }
+        });
+    </script>
+
+    <style>
+        :root {
+            --bg: #030303;
+            --surface: rgba(15, 15, 15, 0.7);
+            --accent: #00f0ff;
+            --accent-glow: rgba(0, 240, 255, 0.2);
+            --text-main: #ffffff;
+            --text-dim: #888888;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Ambient Background */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                radial-gradient(circle at 0% 0%, var(--accent-glow) 0%, transparent 40%),
+                radial-gradient(circle at 100% 100%, rgba(255, 255, 255, 0.03) 0%, transparent 40%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Layout */
+        .layout {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Sidebar UI */
+        .sidebar {
+            width: 400px;
+            background: var(--surface);
+            border-right: 1px solid rgba(0, 240, 255, 0.1);
+            padding: 3rem 2rem;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(20px);
+            box-shadow: 20px 0 50px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 2rem;
+            letter-spacing: -0.05em;
+            margin-bottom: 3rem;
+            background: linear-gradient(135deg, #ffffff 0%, #666666 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .step-counter {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        /* Text Content Animations */
+        .content-wrapper {
+            flex-grow: 1;
+            position: relative;
+        }
+
+        .text-content {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+
+        .text-content.active {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .title {
+            font-size: 2rem;
+            font-weight: 600;
+            line-height: 1.2;
+            margin: 0 0 1rem 0;
+        }
+
+        .desc {
+            font-size: 1.1rem;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+
+        /* Controls */
+        .controls {
+            margin-top: auto;
+            display: flex;
+            gap: 1rem;
+        }
+
+        button {
+            flex: 1;
+            background: transparent;
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-radius: 4px;
+        }
+
+        button:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        button.primary {
+            background: rgba(0, 240, 255, 0.05);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        button.primary:hover:not(:disabled) {
+            background: rgba(0, 240, 255, 0.15);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* Progress Bar */
+        .progress-track {
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            margin-top: 2rem;
+            width: 100%;
+            position: relative;
+        }
+
+        .progress-fill {
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 0 10px var(--accent);
+        }
+
+        /* Main Diagram Area */
+        .main-area {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            position: relative;
+            perspective: 2000px;
+        }
+
+        .diagram-box {
+            width: 100%;
+            max-width: 900px;
+            background: rgba(10, 10, 10, 0.5);
+            border: 1px solid rgba(0, 240, 255, 0.1);
+            border-radius: 8px;
+            padding: 3rem;
+            min-height: 500px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+            transform-style: preserve-3d;
+            transition: transform 0.5s ease-out;
+        }
+
+        .diagram-box:hover {
+            transform: rotateX(2deg) rotateY(-2deg);
+            border-color: rgba(0, 240, 255, 0.3);
+        }
+
+        .mermaid {
+            width: 100%;
+            opacity: 0;
+            transform: scale(0.98);
+            transition: all 0.4s ease;
+        }
+
+        .mermaid.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .mermaid svg {
+            max-width: 100% !important;
+            filter: drop-shadow(0 10px 15px rgba(0,0,0,0.8));
+        }
+
+        /* Scanline Overlay */
+        .scanline {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, transparent 50%, rgba(0, 0, 0, 0.2) 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div class="scanline"></div>
+
+    <div class="layout">
+        <!-- LEFT SIDEBAR: Explanations & Controls -->
+        <div class="sidebar">
+            <div class="logo">SolUPI</div>
+            <div class="step-counter" id="step-counter">STEP 1 OF 6</div>
+            
+            <div class="content-wrapper" id="content-container">
+                <!-- Text content injected here by JS -->
+            </div>
+
+            <div class="controls">
+                <button id="btn-prev" disabled>Previous</button>
+                <button id="btn-next" class="primary">Next Step</button>
+            </div>
+            
+            <div class="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- RIGHT AREA: Mermaid Diagram -->
+        <div class="main-area">
+            <div class="diagram-box">
+                <div id="diagram-render" class="mermaid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // The base setup that remains visible in all steps
+        const baseParticipants = `
+sequenceDiagram
+    participant User
+    participant App as App<br/>[OrderController]
+    participant QR as UPI QR Code
+    participant Bank as Bank Email<br/>[EmailWatcher]
+    participant Engine as AI Engine<br/>[Verif. Chain]
+    participant Sol as Solana<br/>[SolanaFacade]
+`;
+
+        const steps = [
+            {
+                title: "1. Enter Details",
+                desc: "You enter the INR amount you want to convert and your target USDC wallet address.",
+                mermaid: `
+    User->>App: Enters INR Amount & Wallet
+`
+            },
+            {
+                title: "2. Scan & Pay",
+                desc: "The App displays a UPI QR code. You scan it with your phone (GPay/PhonePe) and complete the payment.",
+                mermaid: `
+    User->>App: Enters INR Amount & Wallet
+    App->>QR: Display QR Code
+    User->>QR: Scans and pays via UPI
+`
+            },
+            {
+                title: "3. Submit UTR",
+                desc: "After paying, you receive a 12-digit UTR from your UPI app and submit it to SolUPI. The App [OrderController -> OrderService] securely saves it to the Database [Prisma].",
+                mermaid: `
+    User->>App: Enters INR Amount & Wallet
+    App->>QR: Display QR Code
+    User->>QR: Scans and pays via UPI
+    User->>App: Submits 12-digit UTR
+    App->>App: Saves UTR to DB
+`
+            },
+            {
+                title: "4. Email Watcher",
+                desc: "Your bank sends an automated email confirming the transfer. Our system [EmailWatcher] catches this email, extracts the amount, and adds the record to the database.",
+                mermaid: `
+    User->>QR: Scans and pays via UPI
+    User->>App: Submits 12-digit UTR
+    App->>App: Saves UTR to DB
+    Note over Bank: System monitors inbox
+    Bank->>Engine: Email Caught: ₹1,000 (UTR: 1234...)
+    Engine->>Engine: Adds EmailTx to DB
+`
+            },
+            {
+                title: "5. Verification",
+                desc: "The core verification engine [VerificationChain] checks that the UTR matches, validates the amount, and securely locks the order to prevent double spending [OrderClaimHandler].",
+                mermaid: `
+    User->>App: Submits 12-digit UTR
+    Bank->>Engine: Email Caught: ₹1,000 (UTR: 1234...)
+    Engine->>Engine: Adds EmailTx to DB
+    Note over Engine: 1. UTR Matches?<br/>2. Amount Correct?<br/>3. Prevent Double Spend
+`
+            },
+            {
+                title: "6. Crypto Transfer",
+                desc: "Once verified, the engine calculates the exchange rate [CachedPricingStrategy] and sends the USDC via the Solana network [SolanaFacade].",
+                mermaid: `
+    Bank->>Engine: Email Caught: ₹1,000 (UTR: 1234...)
+    Note over Engine: Verified!
+    Engine->>Sol: Send USDC to Wallet
+    Note right of Sol: Web3 Transfer
+    Sol-->>Engine: Transfer Success (TxID)
+`
+            },
+            {
+                title: "7. Success",
+                desc: "The transaction is atomic [PayoutUnitOfWork]. The app updates to show the successful transfer and provides the blockchain receipt.",
+                mermaid: `
+    Engine->>Sol: Send USDC to Wallet
+    Sol-->>Engine: Transfer Success (TxID)
+    Engine->>App: Mark Order as COMPLETED
+    App-->>User: Success! USDC is in your wallet 🚀
+`
+            }
+        ];
+
+        let currentStep = 0;
+        const totalSteps = steps.length;
+
+        const contentContainer = document.getElementById('content-container');
+        const diagramRender = document.getElementById('diagram-render');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const stepCounter = document.getElementById('step-counter');
+        const progressFill = document.getElementById('progress-fill');
+
+        // Create text containers for all steps
+        steps.forEach((step, index) => {
+            const div = document.createElement('div');
+            div.className = `text-content ${index === 0 ? 'active' : ''}`;
+            div.id = `text-step-${index}`;
+            div.innerHTML = `
+                <h2 class="title">${step.title}</h2>
+                <p class="desc">${step.desc}</p>
+            `;
+            contentContainer.appendChild(div);
+        });
+
+        async function updateView() {
+            // Update Buttons
+            btnPrev.disabled = currentStep === 0;
+            btnNext.disabled = currentStep === totalSteps - 1;
+            btnNext.innerText = currentStep === totalSteps - 1 ? "Finished" : "Next Step";
+
+            // Update Counter & Progress
+            stepCounter.innerText = `STEP ${currentStep + 1} OF ${totalSteps}`;
+            progressFill.style.width = `${(currentStep / (totalSteps - 1)) * 100}%`;
+
+            // Animate Text
+            document.querySelectorAll('.text-content').forEach((el, index) => {
+                if (index === currentStep) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+
+            // Animate Diagram
+            diagramRender.classList.remove('visible');
+            
+            // Wait for fade out
+            await new Promise(r => setTimeout(r, 200));
+
+            try {
+                // Generate and render new Mermaid SVG
+                const fullCode = baseParticipants + steps[currentStep].mermaid;
+                
+                // Clear old diagram to force re-render
+                diagramRender.innerHTML = '';
+                
+                // Render
+                const { svg } = await window.mermaid.render(`graphDiv-${currentStep}`, fullCode);
+                diagramRender.innerHTML = svg;
+                
+                // Fade in
+                diagramRender.classList.add('visible');
+            } catch (error) {
+                console.error("Mermaid render error:", error);
+            }
+        }
+
+        // Wait for mermaid to initialize
+        setTimeout(() => {
+            updateView();
+        }, 500);
+
+        // Event Listeners
+        btnNext.addEventListener('click', () => {
+            if (currentStep < totalSteps - 1) {
+                currentStep++;
+                updateView();
+            }
+        });
+
+        btnPrev.addEventListener('click', () => {
+            if (currentStep > 0) {
+                currentStep--;
+                updateView();
+            }
+        });
+    </script>
+</body>
+</html>
