@@ -121,7 +121,7 @@ export default function SwapInterface() {
   useEffect(() => {
     const fetchPrice = async () => {
       try {
-        const res = await fetch('http://localhost:3001/api/prices'); // Use your actual backend URL
+        const res = await fetch('/api/prices');
         const data = await res.json();
         if (data.success) {
           setExchangeRate(data.finalRate);
